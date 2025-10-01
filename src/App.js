@@ -123,7 +123,7 @@ function App() {
 
     // Aufräumen, wenn die Komponente unmounted wird
     return () => unsubscribers.forEach(unsub => unsub());
-  }, [defaultVotes]); // Läuft nur einmal, da defaultVotes stabil ist
+  }, []); // Läuft nur einmal
 
 
   // 💾 Benutzer speichern
