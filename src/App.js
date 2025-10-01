@@ -76,6 +76,9 @@ const MainApp = ({ user, setUser, movies, votes, findMatches, defaultVotes, hand
   </Box>
 );
 
+import { db } from './firebase';
+import { doc, onSnapshot, setDoc, updateDoc, arrayUnion, arrayRemove } from "firebase/firestore";
+
 function App() {
   const [movies, setMovies] = useState([]);
   const [index, setIndex] = useState(() => {
@@ -93,12 +96,35 @@ function App() {
   const [user, setUser] = useState(() => localStorage.getItem('movieUser') || null);
   const [contentType, setContentType] = useState('movie'); // 'movie' or 'series'
 
+  const defaultVotes = { Karen: [], Tom: [], Thalia: [] };
+  const [votes, setVotes] = useState(defaultVotes);
+
   // Reset state when content type changes
   useEffect(() => {
     setMovies([]);
     setIndex(0);
     setPage(1);
   }, [contentType]);
+
+  // ☁️ Firestore Real-time Listener für Votes
+  useEffect(() => {
+    // Erstelle Listener für jeden bekannten Benutzer
+    const unsubscribers = Object.keys(defaultVotes).map(userName => {
+      const docRef = doc(db, "votes", userName);
+      return onSnapshot(docRef, (doc) => {
+        if (doc.exists()) {
+          setVotes(prev => ({
+            ...prev,
+            [userName]: doc.data().votes || []
+          }));
+        }
+      });
+    });
+
+    // Aufräumen, wenn die Komponente unmounted wird
+    return () => unsubscribers.forEach(unsub => unsub());
+  }, []); // Läuft nur einmal
+
 
   // 💾 Benutzer speichern
   useEffect(() => {
@@ -110,15 +136,6 @@ function App() {
     }
   }, [user]);
 
-  const defaultVotes = { Karen: [], Tom: [], Thalia: [] };
-  const [votes, setVotes] = useState(() => {
-    try {
-      const saved = JSON.parse(localStorage.getItem('movieVotes'));
-      return saved ? { ...defaultVotes, ...saved } : defaultVotes;
-    } catch {
-      return defaultVotes;
-    }
-  });
   const [galleryFilterUsers, setGalleryFilterUsers] = useState(Object.keys(defaultVotes));
 
   const handleGalleryFilterChange = (user, isChecked) => {
@@ -167,24 +184,17 @@ function App() {
     }
   }, [index, remainingMovies.length]);
 
-  // 💾 Fortschritt speichern
+  // 💾 Fortschritt speichern (movieIndex bleibt lokal, da es gerätespezifisch ist)
   useEffect(() => {
     localStorage.setItem('movieIndex', index.toString());
   }, [index]);
 
-  // 💾 Bewertungen speichern
-  useEffect(() => {
-    localStorage.setItem('movieVotes', JSON.stringify(votes));
-  }, [votes]);
-
-  // 🧠 Matching-Logik
+  // 🧠 Matching-Logik (bleibt gleich)
   const findMatches = (usersToMatch) => {
     if (!usersToMatch || usersToMatch.length === 0) return [];
 
-    // Finde die Likes des ersten ausgewählten Nutzers
     const firstUserLikes = votes[usersToMatch[0]]?.filter(v => v.liked).map(v => v.id) || [];
 
-    // Filtere diese Liste, um nur die IDs zu behalten, die von ALLEN anderen ausgewählten Nutzern auch geliked wurden
     const likedBySelected = firstUserLikes.filter(id =>
       usersToMatch.slice(1).every(user => 
         votes[user]?.some(v => v.id === id && v.liked)
@@ -194,10 +204,16 @@ function App() {
     return movies.filter(m => likedBySelected.includes(m.id));
   };
 
-  // 🧹 Entfernen aus Likes
-  const removeLike = (id) => {
-    const updated = votes[user].filter(v => v.id !== id);
-    setVotes({ ...votes, [user]: updated });
+  // 🧹 Entfernen aus Likes -> Schreibt jetzt in Firestore
+  const removeLike = async (movieId) => {
+    if (!user) return;
+    const docRef = doc(db, "votes", user);
+    const movieToRemove = votes[user].find(v => v.id === movieId);
+    if (movieToRemove) {
+      await updateDoc(docRef, {
+        votes: arrayRemove(movieToRemove)
+      });
+    }
   };
 
   // 🧠 Index zurücksetzen, wenn alle Filme bewertet
@@ -207,12 +223,30 @@ function App() {
     }
   }, [remainingMovies, index]);
 
-  // 👍👎 Bewertung speichern
-  const handleVote = (liked) => {
-    const current = remainingMovies[index];
-    const userVotes = votes[user] || [];
-    const updated = [...userVotes, { id: current.id, liked }];
-    setVotes({ ...votes, [user]: updated });
+  // 👍👎 Bewertung speichern -> Schreibt jetzt in Firestore
+  const handleVote = async (liked) => {
+    if (!user || !currentMovie) return;
+
+    const voteData = {
+      id: currentMovie.id,
+      liked: liked,
+      name: currentMovie.name,
+      poster_path: currentMovie.poster_path,
+      type: currentMovie.type
+    };
+
+    const docRef = doc(db, "votes", user);
+
+    try {
+      // Fügt das neue Votum zum Array hinzu. Erstellt das Dokument, falls es nicht existiert.
+      await updateDoc(docRef, {
+        votes: arrayUnion(voteData)
+      });
+    } catch (e) {
+      // Wenn das Dokument nicht existiert, erstelle es
+      await setDoc(docRef, { votes: [voteData] });
+    }
+
     setIndex(index + 1);
   };
 
