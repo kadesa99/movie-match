@@ -2,6 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link as RouterLink, Navigate } from 'react-router-dom';
 import { ThemeProvider, CssBaseline, AppBar, Toolbar, IconButton, Typography, Box, ToggleButtonGroup, ToggleButton } from '@mui/material';
 import { Brightness4, Brightness7, Logout, Theaters, Tv, Favorite } from '@mui/icons-material';
+import { db } from './firebase';
+import { doc, onSnapshot, setDoc, updateDoc, arrayUnion, arrayRemove } from "firebase/firestore";
 
 import { lightTheme, darkTheme } from './theme';
 import { fetchPopularMovies, fetchPopularSeries } from './api/tmdb';
@@ -75,9 +77,6 @@ const MainApp = ({ user, setUser, movies, votes, findMatches, defaultVotes, hand
     </Box>
   </Box>
 );
-
-import { db } from './firebase';
-import { doc, onSnapshot, setDoc, updateDoc, arrayUnion, arrayRemove } from "firebase/firestore";
 
 function App() {
   const [movies, setMovies] = useState([]);
