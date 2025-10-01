@@ -78,6 +78,8 @@ const MainApp = ({ user, setUser, movies, votes, findMatches, defaultVotes, hand
   </Box>
 );
 
+const defaultVotes = { Karen: [], Tom: [], Thalia: [] };
+
 function App() {
   const [movies, setMovies] = useState([]);
   const [index, setIndex] = useState(() => {
@@ -95,7 +97,6 @@ function App() {
   const [user, setUser] = useState(() => localStorage.getItem('movieUser') || null);
   const [contentType, setContentType] = useState('movie'); // 'movie' or 'series'
 
-  const defaultVotes = { Karen: [], Tom: [], Thalia: [] };
   const [votes, setVotes] = useState(defaultVotes);
 
   // Reset state when content type changes
@@ -122,7 +123,7 @@ function App() {
 
     // Aufräumen, wenn die Komponente unmounted wird
     return () => unsubscribers.forEach(unsub => unsub());
-  }, []); // Läuft nur einmal
+  }, [defaultVotes]); // Läuft nur einmal, da defaultVotes stabil ist
 
 
   // 💾 Benutzer speichern
