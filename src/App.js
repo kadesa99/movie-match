@@ -1,10 +1,80 @@
 import React, { useEffect, useState } from 'react';
-import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Link as RouterLink, Navigate } from 'react-router-dom';
+import { ThemeProvider, CssBaseline, AppBar, Toolbar, IconButton, Typography, Box, ToggleButtonGroup, ToggleButton } from '@mui/material';
+import { Brightness4, Brightness7, Logout, Theaters, Tv, Favorite } from '@mui/icons-material';
+
+import { lightTheme, darkTheme } from './theme';
 import { fetchPopularMovies, fetchPopularSeries } from './api/tmdb';
 import SwipePage from './pages/SwipePage';
 import GalleryPage from './pages/GalleryPage';
 import MyLikesPage from './pages/MyLikesPage';
-import './index.css';
+import UserSelectionPage from './pages/UserSelectionPage';
+
+// Die Haupt-App, die nur für eingeloggte Benutzer sichtbar ist
+const MainApp = ({ user, setUser, movies, votes, findMatches, defaultVotes, handleGalleryFilterChange, galleryFilterUsers, removeLike, remainingMovies, currentMovie, handleVote, theme, setTheme, setContentType, contentType }) => (
+  <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
+    <AppBar position="static">
+      <Toolbar>
+        <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
+          Movie Match
+        </Typography>
+        <Typography sx={{ mr: 2 }}>Hallo, {user}</Typography>
+        <IconButton color="inherit" component={RouterLink} to="/"><Theaters /></IconButton>
+        <IconButton color="inherit" component={RouterLink} to="/galerie"><Tv /></IconButton>
+        <IconButton color="inherit" component={RouterLink} to="/meine-likes"><Favorite /></IconButton>
+        <IconButton color="inherit" onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}>
+          {theme === 'dark' ? <Brightness7 /> : <Brightness4 />}
+        </IconButton>
+        {user && <IconButton color="inherit" onClick={() => setUser(null)}><Logout /></IconButton>}
+      </Toolbar>
+    </AppBar>
+    
+    <Box component="main" sx={{ flexGrow: 1, p: 3 }}>
+      <ToggleButtonGroup
+        value={contentType}
+        exclusive
+        onChange={(e, newType) => newType && setContentType(newType)}
+        aria-label="content type"
+        fullWidth
+        sx={{ mb: 3 }}
+      >
+        <ToggleButton value="movie">Filme</ToggleButton>
+        <ToggleButton value="series">Serien</ToggleButton>
+      </ToggleButtonGroup>
+
+      <Routes>
+        <Route
+          path="/"
+          element={<SwipePage user={user} currentMovie={currentMovie} handleVote={handleVote} />}
+        />
+        <Route
+          path="/galerie"
+          element={
+            <GalleryPage 
+              user={user} 
+              matches={findMatches(galleryFilterUsers)}
+              allUsers={Object.keys(defaultVotes)}
+              filteredUsers={galleryFilterUsers}
+              onFilterChange={handleGalleryFilterChange}
+            />
+          }
+        />
+        <Route
+          path="/meine-likes"
+          element={
+            <MyLikesPage
+              user={user}
+              movies={movies}
+              userLikes={user ? votes[user].filter(v => v.liked) : []}
+              removeLike={removeLike}
+            />
+          }
+        />
+        <Route path="*" element={<Navigate to="/" />} />
+      </Routes>
+    </Box>
+  </Box>
+);
 
 function App() {
   const [movies, setMovies] = useState([]);
@@ -12,7 +82,14 @@ function App() {
     const saved = localStorage.getItem('movieIndex');
     return saved ? parseInt(saved, 10) : 0;
   });
-  const [theme, setTheme] = useState('light');
+  const [themeMode, setThemeMode] = useState(() => localStorage.getItem('themeMode') || 'light');
+  const theme = themeMode === 'light' ? lightTheme : darkTheme;
+
+  // 💾 Theme speichern
+  useEffect(() => {
+    localStorage.setItem('themeMode', themeMode);
+  }, [themeMode]);
+
   const [user, setUser] = useState(() => localStorage.getItem('movieUser') || null);
   const [contentType, setContentType] = useState('movie'); // 'movie' or 'series'
 
@@ -28,6 +105,7 @@ function App() {
     if (user) {
       localStorage.setItem('movieUser', user);
     } else {
+      // Beim Ausloggen alles zurücksetzen
       localStorage.removeItem('movieUser');
     }
   }, [user]);
@@ -48,13 +126,6 @@ function App() {
       isChecked ? [...prev, user] : prev.filter(u => u !== user)
     );
   };
-
-  // 🌙 Theme setzen
-
-  // 🌙 Theme setzen
-  useEffect(() => {
-    document.body.setAttribute('data-theme', theme);
-  }, [theme]);
 
   const [page, setPage] = useState(1);
 
@@ -79,7 +150,11 @@ function App() {
         name: item.title || item.name,
       }));
 
-      setMovies(prev => [...prev, ...combined]);
+      setMovies(prev => {
+        const existingIds = new Set(prev.map(m => m.id));
+        const newMovies = combined.filter(m => !existingIds.has(m.id));
+        return [...prev, ...newMovies];
+      });
     };
 
     loadContent(page);
@@ -91,7 +166,6 @@ function App() {
       setPage(prev => prev + 1);
     }
   }, [index, remainingMovies.length]);
-  
 
   // 💾 Fortschritt speichern
   useEffect(() => {
@@ -103,6 +177,7 @@ function App() {
     localStorage.setItem('movieVotes', JSON.stringify(votes));
   }, [votes]);
 
+  // 🧠 Matching-Logik
   const findMatches = (usersToMatch) => {
     if (!usersToMatch || usersToMatch.length === 0) return [];
 
@@ -142,55 +217,16 @@ function App() {
   };
 
   return (
-    <Router>
-      <div className="App">
-        <header>
-          <nav>
-            <button onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}>
-              🌗
-            </button>
-            <Link to="/">🎬 Swipen</Link>
-            <Link to="/galerie">🖼️ Galerie</Link>
-            <Link to="/meine-likes">💖 Meine Likes</Link>
-            {user && <button onClick={() => setUser(null)}>👤</button>}
-          </nav>
-          <div className="contentTypeToggle">
-            <button onClick={() => setContentType('movie')} className={contentType === 'movie' ? 'active' : ''}>Filme</button>
-            <button onClick={() => setContentType('series')} className={contentType === 'series' ? 'active' : ''}>Serien</button>
-          </div>
-        </header>
-
-        <Routes>
-          <Route
-            path="/"
-            element={<SwipePage user={user} setUser={setUser} currentMovie={currentMovie} handleVote={handleVote} />}
-          />
-          <Route
-            path="/galerie"
-            element={
-              <GalleryPage 
-                user={user} 
-                matches={findMatches(galleryFilterUsers)}
-                allUsers={Object.keys(defaultVotes)}
-                filteredUsers={galleryFilterUsers}
-                onFilterChange={handleGalleryFilterChange}
-              />
-            }
-          />
-          <Route
-            path="/meine-likes"
-            element={
-              <MyLikesPage
-                user={user}
-                movies={movies}
-                userLikes={user ? votes[user].filter(v => v.liked) : []}
-                removeLike={removeLike}
-              />
-            }
-          />
-        </Routes>
-      </div>
-    </Router>
+    <ThemeProvider theme={theme}>
+      <CssBaseline />
+      <Router>
+        {user ? (
+          <MainApp {...{ user, setUser, movies, votes, findMatches, defaultVotes, handleGalleryFilterChange, galleryFilterUsers, removeLike, remainingMovies, currentMovie, handleVote, theme: themeMode, setTheme: setThemeMode, setContentType, contentType }} />
+        ) : (
+          <UserSelectionPage setUser={setUser} />
+        )}
+      </Router>
+    </ThemeProvider>
   );
 }
 
